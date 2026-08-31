@@ -113,6 +113,19 @@ class TestZKReceipt:
         assert verify_receipt(receipt, bad.tobytes())["verified"] is False
 
 
+class TestRealConnectome:
+    def test_celegans_edge_list(self, tmp_path):
+        csv = tmp_path / "ce.csv"
+        csv.write_text("pre\tpost\ttype\tsynapses\n"
+                       "ADAL\tADFL\telectrical\t1\n"
+                       "ADAL\tAIBL\tchemical\t2\n"
+                       "ADFL\tAIBL\tchemical\t3\n")
+        con = load_connectome(str(csv))
+        assert con.n_nodes == 3
+        assert con.weights[0, 1] == 1.0 and con.weights[0, 2] == 2.0
+        assert np.allclose(con.weights, con.weights.T)
+
+
 class TestPipelineEndToEnd:
     def test_full_run(self, tmp_path):
         out = run_pipeline(n_nodes=64, out_dir=str(tmp_path), verbose=False)

@@ -38,6 +38,30 @@ Connectome biologique ──> Hamiltonien fermionique H_cog ──> Solveur quan
 | Match complexité Lempel-Ziv | **88 %** |
 | Reçu cryptographique | **VERIFIED** |
 
+### Connectome réel (C. elegans, White et al. 1986)
+
+```bash
+python -m ratiss_neuro.core --connectome data/celegans_white1986.csv
+```
+
+| Métrique | Valeur |
+|---|---|
+| Nœuds / synapses | **309 / 2511** (réelles) |
+| $E_0$/site | -0.236 eV |
+| Flux d'émergence $\Phi$ | **+0.84** (vs +0.18 synthétique) |
+| PSD vs EEG | 0.91 |
+
+### Scale-up
+
+| N nœuds | Temps pipeline complet |
+|---|---|
+| 256 | 1.8 s |
+| 1024 | **3.1 s** |
+
+### Hardware quantique IBM (exécuté)
+
+Circuit neuronal (bloc 8 qubits de $H_{cog}$, portes Rzz) exécuté sur **ibm_fez** (156 qubits, 1024 shots) — job `dab0oamrrl7c738678k0`, comptages dans `artifacts/ibm_run.json`.
+
 ## Installation & exécution
 
 ```bash

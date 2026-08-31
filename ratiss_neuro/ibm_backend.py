@@ -62,13 +62,29 @@ def hamiltonian_to_qubits(H, max_qubits: int = 8) -> "QuantumCircuit":
     return qc
 
 
-def run_vqe_remote(token: str, crn: str, H, backend: str = "ibm_fez") -> dict:
-    """Execute une estimation d'energie fondamentale sur hardware IBM."""
+def run_circuit_remote(token: str, crn: str, H, backend_name: str = "ibm_fez",
+                       max_qubits: int = 8, shots: int = 1024) -> dict:
+    """Execute le circuit neuronal (cartographie du bloc H_cog) sur
+    hardware IBM via Sampler, et retourne les comptages mesures."""
     if not HAS_QISKIT:
         raise ImportError("qiskit requis : pip install qiskit qiskit-ibm-runtime")
+    from qiskit import transpile
+    from qiskit_ibm_runtime import SamplerV2 as Sampler
+
     service = QiskitRuntimeService(
         channel="ibm_quantum_platform", token=token, instance=crn
     )
-    qc = hamiltonian_to_qubits(H)
-    job = service.run(qc, backend=backend, shots=1024)
-    return {"job_id": job.job_id(), "backend": backend, "status": "SUBMITTED"}
+    backend = service.backend(backend_name)
+    qc = hamiltonian_to_qubits(H, max_qubits=max_qubits)
+    tqc = transpile(qc, backend=backend, optimization_level=1)
+    sampler = Sampler(mode=backend)
+    job = sampler.run([tqc], shots=shots)
+    result = job.result()
+    counts = result[0].data.meas.get_counts()
+    return {
+        "job_id": job.job_id(),
+        "backend": backend_name,
+        "shots": shots,
+        "counts": counts,
+        "status": "DONE",
+    }

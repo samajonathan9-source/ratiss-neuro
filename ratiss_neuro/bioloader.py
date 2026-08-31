@@ -34,10 +34,7 @@ def load_connectome(
     seed: int = 7,
 ) -> Connectome:
     if path is not None:
-        if path.endswith(".npy"):
-            weights = np.load(path).astype(np.float64)
-        else:
-            weights = np.loadtxt(path, delimiter=",").astype(np.float64)
+        weights = _load_weight_matrix(path)
         weights = np.maximum(weights, 0.0)
         np.fill_diagonal(weights, 0.0)
         n = weights.shape[0]
@@ -85,6 +82,40 @@ def load_reference_eeg(path: str | None = None, duration_s: float = 5.0, fs: flo
     gamma_env = 0.5 * (1 + np.sin(2 * np.pi * 0.4 * t))
     gamma = 0.35 * gamma_env * np.sin(2 * np.pi * 40.0 * t)
     return pink + theta + gamma, fs
+
+
+def _load_weight_matrix(path: str) -> np.ndarray:
+    """Charge une matrice de connectivite depuis .npy, .csv dense,
+    ou .csv au format aretes (colonnes pre, post, type, synapses) —
+    format du connectome reel C. elegans (White et al. 1986, c302)."""
+    if path.endswith(".npy"):
+        return np.load(path).astype(np.float64)
+
+    with open(path) as f:
+        header = f.readline().lower()
+    if "pre" in header and "post" in header:
+        import csv
+        delim = "\t" if "\t" in header else ","
+        edges: dict = {}
+        nodes: list = []
+        rows = []
+        with open(path) as f:
+            for row in csv.DictReader(f, delimiter=delim):
+                pre, post = row["pre"].strip(), row["post"].strip()
+                w = float(row.get("synapses") or 1.0)
+                rows.append((pre, post, w))
+                for x in (pre, post):
+                    if x not in edges:
+                        edges[x] = len(nodes)
+                        nodes.append(x)
+        n = len(nodes)
+        W = np.zeros((n, n))
+        for pre, post, w in rows:
+            i, j = edges[pre], edges[post]
+            W[i, j] += w
+            W[j, i] += w  # symetrisation (modele non oriente)
+        return W
+    return np.loadtxt(path, delimiter=",").astype(np.float64)
 
 
 def _ring_layout(n: int, seed: int) -> np.ndarray:
