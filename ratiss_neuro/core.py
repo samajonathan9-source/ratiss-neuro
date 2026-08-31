@@ -1,0 +1,193 @@
+"""RATISS-NEURO core : pipeline complet du Jumeau Numerique Cognitif.
+
+Phase 1 : chargement biologique + construction H_cog (fermionique)
+Phase 2 : resolution quantique hybride (Lanczos + Lindblad)
+Phase 3 : P_sig^neuro(t) par persistance homologique temps reel
+Phase 4 : tryperposition et collapse dirige
+Phase 5 : certification cryptographique + artefacts + rapport
+
+Usage :  python -m ratiss_neuro.core [--connectome PATH] [--eeg PATH]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from pathlib import Path
+
+import h5py
+import numpy as np
+
+from .bioloader import load_connectome, load_reference_eeg
+from .hamiltonian import build_hamiltonian
+from .quantum_solver import solve_quantum_hybrid
+from .topology import compute_p_sig
+from .tryperposition import cognitive_signal, solve_tryperposition
+from .validation import lz_match, microstate_isomorphism, psd_correlation
+from .zk_receipt import check_invariants, generate_receipt, verify_receipt
+
+
+def run_pipeline(
+    connectome_path: str | None = None,
+    eeg_path: str | None = None,
+    out_dir: str = "artifacts",
+    n_nodes: int = 256,
+    verbose: bool = True,
+) -> dict:
+    log = print if verbose else (lambda *a, **k: None)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    t_start = time.perf_counter()
+
+    # ---------- PHASE 1 : chargement biologique + H_cog ----------
+    log("\n=== PHASE 1 : CHARGEMENT BIOLOGIQUE & CONSTRUCTION H_cog ===")
+    con = load_connectome(connectome_path, n_nodes=n_nodes)
+    n_edges = int((con.weights > 0).sum() // 2)
+    log(f"[BIO_LOADER] Connectome : {con.n_nodes} noeuds, {n_edges} aretes")
+    log(f"[BIO_LOADER] Biophysique : {con.biophys}")
+    H = build_hamiltonian(con)
+    log(f"[H_BUILDER] H_cog assemble : {H.shape}, nnz={H.nnz}, hermitien={bool(np.allclose((H - H.getH()).data, 0, atol=1e-10))}")
+
+    # ---------- PHASE 3a : P_sig prealable (pilote la decoherence) ----------
+    ref_eeg, fs = load_reference_eeg(eeg_path)
+    topo_pre = compute_p_sig(ref_eeg, fs)
+
+    # ---------- PHASE 2 : resolution quantique hybride ----------
+    log("\n=== PHASE 2 : RESOLUTION QUANTIQUE HYBRIDE ===")
+    qres = solve_quantum_hybrid(H, k=12, p_sig=topo_pre.p_sig_peak)
+    log(f"[SOLVER] E0/site        = {qres.e0_per_site:.6f} eV")
+    log(f"[SOLVER] Gap de spin    = {qres.spin_gap_mev:.3f} meV")
+    log(f"[SOLVER] Ordre d-wave   = {qres.dwave_order:.4f}")
+    log(f"[SOLVER] Entropie vN    = {qres.von_neumann_entropy:.4f}")
+    for ch, g in qres.gamma_eff.items():
+        log(f"[LINDBLAD] {ch:8s} : {g['gamma0']:.0f} -> {g['gamma_eff']:.3f} s^-1 (suppression x{g['suppression']:.1f})")
+    log(f"[SOLVER] Fidelite coherence = {qres.fidelity * 100:.2f} %")
+
+    # ---------- PHASE 3 : P_sig^neuro(t) temps reel ----------
+    log("\n=== PHASE 3 : SIGNATURE TOPOLOGIQUE P_sig^neuro(t) ===")
+    log(f"[TOPO] P_sig^peak          = {topo_pre.p_sig_peak:.3f}")
+    log(f"[TOPO] Duree de vie H1     = {topo_pre.h1_lifetime_ms:.1f} ms")
+    log(f"[TOPO] Cavites H2 max      = {topo_pre.n_h2_cavities}")
+
+    # ---------- PHASE 4 : tryperposition ----------
+    log("\n=== PHASE 4 : TRYPERSITION & COLLAPSE DIRIGE ===")
+    adj = (con.weights > 0).astype(np.int8)
+    tres = solve_tryperposition(qres.states, qres.energies, adj)
+    log(f"[TRYP] Etats selectionnes : {[int(i) for i in tres.selected]}")
+    log(f"[TRYP] Amplitudes p_n     = {[round(float(p), 3) for p in tres.p_n]}")
+    log(f"[TRYP] Flux d'emergence   = {tres.emergence_flux:+.4f}")
+    sig = cognitive_signal(tres, qres.energies, duration_s=5.0, fs=fs,
+                           reference=ref_eeg)
+
+    # ---------- PHASE 5 : certification + artefacts ----------
+    log("\n=== PHASE 5 : CERTIFICATION CRYPTOGRAPHIQUE ===")
+    psi_final = np.zeros(qres.states.shape[0], dtype=np.complex128)
+    for amp, idx in zip(tres.p_n, tres.selected):
+        psi_final += np.sqrt(amp) * qres.states[:, idx]
+    psi_bytes = psi_final.astype(np.complex64).tobytes()
+
+    suppression_tot = float(np.prod([g["suppression"] for g in qres.gamma_eff.values()]))
+    receipt = generate_receipt(psi_bytes, {
+        "final_fidelity": round(qres.fidelity, 6),
+        "p_sig_peak": round(topo_pre.p_sig_peak, 4),
+        "decoherence_suppression_factor": round(suppression_tot, 2),
+    })
+    verif = verify_receipt(receipt, psi_bytes)
+    invariants = check_invariants(qres.e0_per_site, qres.von_neumann_entropy,
+                                  con.n_nodes, verif["verified"])
+    log(f"[ZK] Commitment = {receipt['zk_commitment'][:18]}...")
+    log(f"[ZK] Verification = {verif['status']} en {verif['verification_time_ms']} ms")
+    log(f"[ZK] Invariants = {invariants}")
+
+    # Artefacts
+    np.save(out / "cognitive_state_vector.npy", psi_final.astype(np.complex64))
+    with h5py.File(out / "p_sig_temporal_map.h5", "w") as f:
+        f.create_dataset("p_sig_t", data=topo_pre.p_sig_t)
+        for i, dgm in enumerate(topo_pre.barcodes):
+            f.create_dataset(f"barcode_h1/{i:04d}", data=dgm)
+        f.attrs["p_sig_peak"] = topo_pre.p_sig_peak
+        f.attrs["h1_lifetime_ms"] = topo_pre.h1_lifetime_ms
+    with open(out / "decoherence_rates_gamma.csv", "w") as f:
+        f.write("canal,gamma0_s-1,gamma_eff_s-1,suppression\n")
+        for ch, g in qres.gamma_eff.items():
+            f.write(f"{ch},{g['gamma0']},{g['gamma_eff']:.6f},{g['suppression']:.3f}\n")
+    with open(out / "zk_receipt_cognitive.bin", "wb") as f:
+        f.write(json.dumps(receipt, indent=2).encode())
+
+    # Validation biologique
+    psd_corr = psd_correlation(sig, ref_eeg, fs)
+    lz = lz_match(sig, ref_eeg)
+    iso = microstate_isomorphism(sig, ref_eeg, fs)
+    report = f"""# Validation Report — RATISS-NEURO Jumeau Numerique Cognitif
+
+Reference biologique : {'fichier ' + str(eeg_path) if eeg_path else 'substitut synthetique 1/f + theta(6Hz) + gamma(40Hz)'}
+Connectome : {'fichier ' + str(connectome_path) if connectome_path else 'small-world synthetique (256 noeuds)'}
+
+## Metriques quantiques
+| Observable | Valeur |
+|---|---|
+| E0 / site | {qres.e0_per_site:.6f} eV |
+| Gap de spin | {qres.spin_gap_mev:.3f} meV |
+| Ordre d-wave | {qres.dwave_order:.4f} |
+| Entropie vN (normalisee) | {qres.von_neumann_entropy:.4f} |
+| Fidelite de coherence | {qres.fidelity * 100:.2f} % |
+
+## Metriques topologiques
+| Observable | Valeur |
+|---|---|
+| P_sig peak | {topo_pre.p_sig_peak:.3f} |
+| Duree de vie H1 | {topo_pre.h1_lifetime_ms:.1f} ms |
+| Suppression decoherence (produit canaux) | x{suppression_tot:.1f} |
+
+## Correspondance biologique (objectif : copie ~98 % des signaux)
+| Metrique | Valeur |
+|---|---|
+| Correlation spectrale PSD | {psd_corr:.4f} |
+| Match complexite Lempel-Ziv | {lz * 100:.2f} % |
+| Isomorphisme micro-etats (corr P_sig) | {iso:.4f} |
+
+## Certification
+- Commitment : `{receipt['zk_commitment']}`
+- Statut : {verif['status']} ({verif['verification_time_ms']} ms)
+- Invariants : {json.dumps(invariants)}
+
+Note d'honnetete : le receipt est un engagement par chaine de hachage
+BLAKE3->SHA256. Le backend ZK-STARK (RISC Zero) est une interface prevue,
+non cablee dans cette version. Secteur a une particule pour H_cog
+(sous-espace actif DMET simule), Hubbard U en potentiel onsite.
+"""
+    (out / "validation_report.md").write_text(report)
+
+    elapsed = time.perf_counter() - t_start
+    log(f"\n=== MISSION TERMINEE en {elapsed:.1f} s ===")
+    log(f"[ARTEFACTS] {sorted(p.name for p in out.iterdir())}")
+    log(f"[VALIDATION] PSD={psd_corr:.3f}  LZ={lz * 100:.1f}%  ISO={iso:.3f}")
+
+    return {
+        "e0_per_site": qres.e0_per_site,
+        "spin_gap_mev": qres.spin_gap_mev,
+        "fidelity": qres.fidelity,
+        "p_sig_peak": topo_pre.p_sig_peak,
+        "h1_lifetime_ms": topo_pre.h1_lifetime_ms,
+        "emergence_flux": tres.emergence_flux,
+        "psd_corr": psd_corr,
+        "lz_match": lz,
+        "iso": iso,
+        "verified": verif["verified"],
+        "invariants": invariants,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="RATISS-NEURO cognitive twin pipeline")
+    ap.add_argument("--connectome", default=None, help="matrice de connectivite (.npy/.csv)")
+    ap.add_argument("--eeg", default=None, help="EEG de reference (.csv)")
+    ap.add_argument("--out", default="artifacts")
+    ap.add_argument("--nodes", type=int, default=256)
+    args = ap.parse_args()
+    run_pipeline(args.connectome, args.eeg, args.out, args.nodes)
+
+
+if __name__ == "__main__":
+    main()
