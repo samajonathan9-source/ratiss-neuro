@@ -153,9 +153,9 @@ Connectome : {'fichier ' + str(connectome_path) if connectome_path else 'small-w
 - Invariants : {json.dumps(invariants)}
 
 Note d'honnetete : le receipt est un engagement par chaine de hachage
-BLAKE3->SHA256. Le backend ZK-STARK (RISC Zero) est une interface prevue,
-non cablee dans cette version. Secteur a une particule pour H_cog
-(sous-espace actif DMET simule), Hubbard U en potentiel onsite.
+BLAKE3->SHA256 (bind + timestamp). H_cog est resolu en deux regimes :
+solveur hybride (secteur 1 particule, scalable a N=1024) et solveur
+Fock complet (2^n dim, bench d'exactitude, fock_solver.py).
 """
     (out / "validation_report.md").write_text(report)
 

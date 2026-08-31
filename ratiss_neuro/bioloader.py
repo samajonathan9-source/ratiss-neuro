@@ -70,9 +70,21 @@ def load_connectome(
 
 
 def load_reference_eeg(path: str | None = None, duration_s: float = 5.0, fs: float = 1000.0,
-                       seed: int = 11) -> tuple[np.ndarray, float]:
-    """EEG de reference (registre) ou substitut synthetique 1/f + theta + gamma."""
+                       seed: int = 11, channel: int = 0) -> tuple[np.ndarray, float]:
+    """EEG de reference. Formats : .npy | .csv mono-colonne | .edf (pyedflib)."""
     if path is not None:
+        if path.endswith(".edf"):
+            try:
+                import pyedflib
+            except ImportError:
+                raise ImportError("pyedflib requis pour lire les .edf")
+            f = pyedflib.EdfReader(path)
+            fs_e = float(f.getSampleFrequency(channel))
+            sig = f.readSignal(channel).astype(np.float64)
+            f.close()
+            return sig, fs_e
+        if path.endswith(".npy"):
+            return np.load(path).astype(np.float64), fs
         data = np.loadtxt(path, delimiter=",", ndmin=2)
         return data[:, 0], fs
     t = np.arange(0, duration_s, 1.0 / fs)

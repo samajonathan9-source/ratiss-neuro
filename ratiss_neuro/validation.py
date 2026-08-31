@@ -15,11 +15,18 @@ from .topology import compute_p_sig
 
 def psd_correlation(sig: np.ndarray, ref: np.ndarray, fs: float,
                     fmin: float = 1.0, fmax: float = 80.0) -> float:
+    """Correlation log-PSD interpolee sur une grille de frequences commune
+    (robuste aux longueurs de signal differentes)."""
     f1, p1 = welch(sig, fs=fs, nperseg=min(1024, sig.size))
     f2, p2 = welch(ref, fs=fs, nperseg=min(1024, ref.size))
-    mask = (f1 >= fmin) & (f1 <= fmax)
-    l1 = np.log10(p1[mask] + 1e-20)
-    l2 = np.log10(p2[mask] + 1e-20)
+    hi = min(fmax, f1[-1], f2[-1])
+    if hi <= fmin:
+        return 0.0
+    grid = np.linspace(fmin, hi, 128)
+    l1 = np.log10(np.interp(grid, f1, p1) + 1e-20)
+    l2 = np.log10(np.interp(grid, f2, p2) + 1e-20)
+    if l1.std() < 1e-12 or l2.std() < 1e-12:
+        return 0.0
     return float(np.corrcoef(l1, l2)[0, 1])
 
 

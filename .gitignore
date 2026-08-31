@@ -6,3 +6,7 @@ artifacts_test/
 *.egg-info/
 .env
 ibm
+artifacts_real/
+artifacts_1024r/
+artifacts_1024/
+artifacts_celegans/

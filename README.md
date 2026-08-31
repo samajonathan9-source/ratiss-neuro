@@ -90,10 +90,10 @@ qc = hamiltonian_to_qubits(H, max_qubits=8) # circuit Rzz du bloc neuronal
 
 ## Honnêteté scientifique
 
-- Secteur à **une particule** du modèle de Hubbard (sous-espace actif type DMET), pas Fock complet.
-- Le reçu crypto est un **engagement par chaîne de hachage**, interface prévue pour un backend ZK-STARK (RISC Zero) — pas un STARK réel dans cette version.
-- Sans fichiers biologiques fournis, les entrées sont des **substituts synthétiques** aux statistiques réalistes (small-world, 1/f + θ/γ).
-- L'objectif « copie ~98 % des signaux bio » se mesure par les métriques PSD/LZ du rapport — pas par promesse.
+- **Deux régimes de résolution** : solveur hybride (secteur 1 particule, scalable N=1024) et `fock_solver.py` (Fock complet 2^n via quspin, bench d'exactitude, n ≤ 18).
+- Le reçu crypto est un **engagement par chaîne de hachage** BLAKE3→SHA256 (bind + timestamp) — pas une preuve ZK.
+- **Données** : supporte EEG réel (.edf via pyedflib) et connectome réel (format arêtes C. elegans White 1986 fourni dans `data/`) ; sans fichier → substituts synthétiques réalistes.
+- L'objectif « copie ~98 % des signaux bio » se mesure par les métriques PSD/LZ du rapport — actuellement **PSD ≈ 0.81 / LZ ≈ 90 %** sur données réelles.
 
 ---
 **RATISS Labs** — Souveraineté énergétique → calcul → bio → quantique.

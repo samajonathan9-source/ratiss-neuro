@@ -137,3 +137,24 @@ class TestPipelineEndToEnd:
                      "decoherence_rates_gamma.csv", "zk_receipt_cognitive.bin",
                      "validation_report.md"]:
             assert (tmp_path / name).exists()
+
+
+class TestFockSolver:
+    def test_fock_complete_dimension(self):
+        pytest.importorskip("quspin")
+        from ratiss_neuro.fock_solver import solve_fock_exact
+        H = np.array([[1.0, -0.5, 0.0], [-0.5, 1.2, -0.3], [0.0, -0.3, 0.9]])
+        r = solve_fock_exact(H, k=4)
+        assert r["n_states"] == 2 ** 3       # Fock complet = 2^N
+        assert r["fock_complete"] is True
+        assert np.isfinite(r["ground_state_e0_per_site"])
+
+    def test_psd_robust_different_lengths(self):
+        from ratiss_neuro.validation import psd_correlation
+        a = np.random.default_rng(0).standard_normal(500)
+        a += np.sin(2 * np.pi * 6 * np.arange(500) / 100.0)
+        b = np.random.default_rng(1).standard_normal(5000)
+        b += np.sin(2 * np.pi * 6 * np.arange(5000) / 1000.0)
+        v = psd_correlation(a, b, fs=100.0)
+        assert -1.0 <= v <= 1.0
+
