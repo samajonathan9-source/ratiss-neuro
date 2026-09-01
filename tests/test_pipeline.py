@@ -158,3 +158,41 @@ class TestFockSolver:
         v = psd_correlation(a, b, fs=100.0)
         assert -1.0 <= v <= 1.0
 
+
+class TestSNN:
+    """Module SNN AdEx quantique-couple (Phase 4b, RATISS-SNN-WHOLEBRAIN)."""
+
+    def test_microcircuit_structure(self):
+        from ratiss_neuro.snn import build_microcircuit
+        W, is_exc = build_microcircuit(4, n_per_region=10, seed=1)
+        assert W.shape == (40, 40)
+        assert is_exc.sum() == 4 * 8          # 80% excitateurs
+        assert (W.diagonal() == 0).all()      # pas d'auto-connexion
+
+    def test_snn_deterministic_and_fires(self):
+        from ratiss_neuro.snn import (AdExParams, build_microcircuit,
+                                      simulate_snn)
+        W, is_exc = build_microcircuit(4, n_per_region=10, seed=1)
+        r1 = simulate_snn(W, is_exc, AdExParams(), duration_s=0.5,
+                          dt_ms=0.5, seed=11)
+        r2 = simulate_snn(W, is_exc, AdExParams(), duration_s=0.5,
+                          dt_ms=0.5, seed=11)
+        assert np.array_equal(r1.spikes, r2.spikes)  # determinisme
+        assert r1.spikes.sum() > 0                   # activite reelle
+        rate = r1.spikes.sum() / (r1.spikes.shape[1] * 0.5)
+        assert 0.1 < rate < 100.0  # regime biologique
+
+    def test_snn_to_eeg_and_drive_shape(self):
+        from ratiss_neuro.snn import (snn_to_eeg, theta_drive_from_eeg,
+                                      AdExParams, build_microcircuit,
+                                      simulate_snn)
+        ref = np.random.default_rng(2).standard_normal(800)
+        drive = theta_drive_from_eeg(ref, 160.0, 1000, depth=0.5)
+        assert drive.shape == (1000,)
+        assert np.all(drive > 0)  # drive multiplicatif positif
+        W, is_exc = build_microcircuit(2, n_per_region=10, seed=3)
+        res = simulate_snn(W, is_exc, AdExParams(), duration_s=0.2,
+                           dt_ms=0.5, theta_clock=drive[:400])
+        eeg = snn_to_eeg(res, 160.0)
+        assert eeg.size > 0 and np.all(np.isfinite(eeg))
+

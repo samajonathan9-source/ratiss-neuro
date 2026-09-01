@@ -25,6 +25,8 @@ from .kuramoto import consciousness_threshold, simulate_kuramoto
 from .quantum_solver import coupler_non_local, solve_quantum_hybrid
 from .replay import replay_offline
 from .topology import compute_p_sig
+from .snn import (AdExParams, build_microcircuit, simulate_snn,
+                  snn_to_eeg, theta_drive_from_eeg)
 from .tryperposition import cognitive_signal, solve_tryperposition
 from .validation import lz_match, microstate_isomorphism, psd_correlation
 from .zk_receipt import check_invariants, generate_receipt, verify_receipt
@@ -87,6 +89,31 @@ def run_pipeline(
     log(f"[TRYP] Flux d'emergence   = {tres.emergence_flux:+.4f}")
     sig = cognitive_signal(tres, qres.energies, duration_s=5.0, fs=fs,
                            reference=ref_eeg)
+
+    # ---------- PHASE 4b : SNN quantique-couple (dynamique forward) ----------
+    # Le surrogate ci-dessus matche la STATISTIQUE (PSD, LZ). Le SNN AdEx
+    # tente la dynamique CAUSALE (ISO) : les spikes generent les
+    # micro-etats. Couplage : I_quantum = p_n du collapse module
+    # l'excitabilite regionale + drive thalamique = phases < 16 Hz.
+    log("\n=== PHASE 4b : SNN ADEX QUANTIQUE-COUPLE (forward) ===")
+    n_snn_reg = min(n_nodes, 24)  # tractable en RAM/temps
+    w_sub = con.weights[:n_snn_reg, :n_snn_reg]
+    W_snn, is_exc = build_microcircuit(n_snn_reg, n_per_region=40,
+                                       w_connectome=w_sub)
+    # I_quantum : p_n du collapse projete sur les regions (excitabilite)
+    i_quantum = np.array([float(tres.p_n[i % tres.p_n.size]) * 200.0 - 100.0
+                          for i in range(n_snn_reg)])
+    n_steps = int(5.0 * 1000 / 0.5)
+    drive = theta_drive_from_eeg(ref_eeg, fs, n_steps, depth=0.8)
+    snn_res = simulate_snn(W_snn, is_exc, AdExParams(), duration_s=5.0,
+                           dt_ms=0.5, i_quantum=i_quantum,
+                           theta_clock=drive, i_ext_pa=220.0)
+    sig_snn = snn_to_eeg(snn_res, fs)[:min(800, ref_eeg.size)]
+    rate = float(snn_res.spikes.sum() /
+                 (snn_res.spikes.shape[1] * 5.0))
+    iso_snn = microstate_isomorphism(sig_snn, ref_eeg, fs)
+    log(f"[SNN] {W_snn.shape[0]} neurones, {n_snn_reg} regions | "
+        f"taux moyen = {rate:.1f} Hz | ISO forward = {iso_snn:.3f}")
 
     # Couplage non-local (myeline/microtubules) : le Hamiltonien acquiert
     # des canaux inter-regionaux sans decoherence
@@ -170,6 +197,7 @@ Connectome : {'fichier ' + str(connectome_path) if connectome_path else 'small-w
 | Correlation spectrale PSD | {psd_corr:.4f} |
 | Match complexite Lempel-Ziv | {lz * 100:.2f} % |
 | Isomorphisme micro-etats (corr P_sig) | {iso:.4f} |
+| **SNN forward (dynamique causale)** | **ISO = {iso_snn:.3f}** ({W_snn.shape[0]} neurones, {n_snn_reg} regions, {rate:.1f} Hz) |
 
 ## Certification
 - Commitment : `{receipt['zk_commitment']}`
@@ -188,6 +216,15 @@ p_n du collapse, avec calibration LZ bidirectionnelle (bruit gamma /
 lissage). La PSD et LZ sont donc matchees par construction ; l'ISO
 (correlation des trajectoires P_sig) mesure la correspondance
 dynamique residuelle — la frontiere ouverte du jumeau.
+
+SNN AdEx quantique-couple (Phase 4b, RATISS-SNN-WHOLEBRAIN) : reseau
+forward causal de neurones AdEx (80/20 E/I, connectome structural,
+I_quantum = p_n du collapse, drive thalamique = phases < 16 Hz).
+Resultat honnete : l'ISO forward est ~{iso_snn:.2f}, tres inferieur au
+surrogate ({iso:.2f}). La refractarite AdEx filtre la dynamique lente
+du drive : le SNN non-calibre ne reproduit pas encore les micro-etats.
+C'est la frontiere scientifique reelle — combler cet ecart exige le
+calibrage STDP/BPTT (Phase 3 de la roadmap), pas du tuning a la main.
 """
     (out / "validation_report.md").write_text(report)
 
