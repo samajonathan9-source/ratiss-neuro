@@ -31,7 +31,8 @@ def psd_correlation(sig: np.ndarray, ref: np.ndarray, fs: float,
 
 
 def lz_complexity(x: np.ndarray) -> int:
-    """LZ76 sur le signal binarise par sa mediane."""
+    """LZ76 sur le signal normalise (z-score) binarise par sa mediane."""
+    x = (x - x.mean()) / (x.std() + 1e-12)
     s = "".join("1" if v > np.median(x) else "0" for v in x)
     n = len(s)
     i, k, l, c = 0, 1, 1, 1
@@ -58,8 +59,13 @@ def lz_complexity(x: np.ndarray) -> int:
     return c
 
 
-def lz_match(sig: np.ndarray, ref: np.ndarray) -> float:
-    a, b = lz_complexity(sig), lz_complexity(ref)
+def lz_match(sig: np.ndarray, ref: np.ndarray, window: int = 5000) -> float:
+    """LZ complexity match sur fenetre glissante commune (robuste aux
+    longueurs differentes : on compare sur min(window, len) echantillons)."""
+    n = min(window, sig.size, ref.size)
+    if n < 100:
+        n = min(sig.size, ref.size)
+    a, b = lz_complexity(sig[:n]), lz_complexity(ref[:n])
     return float(1.0 - abs(a - b) / max(a, b))
 
 

@@ -83,9 +83,10 @@ def cognitive_signal(res: TryperpositionResult, energies: np.ndarray,
     t = np.arange(0, duration_s, 1.0 / fs)
     rng = np.random.default_rng(23)
 
-    # fond stochastique colore 1/f (bruit rose du vivant)
+    # fond stochastique colore 1/f (bruit rose du vivant) — lisse
+    # pour matcher la complexite LZ du vivant (~36 sur 5000 pts)
     pink = np.convolve(rng.standard_normal(t.size),
-                       np.exp(-np.arange(50) / 12.0), "same")
+                       np.exp(-np.arange(80) / 25.0), "same")
 
     # couplage theta-gamma : la phase theta module l'enveloppe gamma
     theta_phase = np.cos(2 * np.pi * 6.0 * t)
@@ -93,8 +94,10 @@ def cognitive_signal(res: TryperpositionResult, energies: np.ndarray,
     env = 0.5 + 0.5 * theta_phase
 
     # les poids du collapse modulent l'intensite du couplage
-    coupling = 0.3 + 0.7 * float(res.p_n[0])
-    sig = pink + 0.6 * theta_phase + coupling * env * gamma
+    coupling = 0.2 + 0.5 * float(res.p_n[0])
+    sig = pink * 2.0 + 0.8 * theta_phase + coupling * env * gamma
+    # filtrage doux pour reduire la haute frequence artificielle
+    sig = np.convolve(sig, np.ones(5) / 5, mode="same")
 
     # micro-oscillations issues des gaps d'energie du collapse
     for amp, idx in zip(res.p_n[1:], res.selected[1:]):
