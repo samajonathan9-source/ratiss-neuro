@@ -21,7 +21,9 @@ import numpy as np
 
 from .bioloader import load_connectome, load_reference_eeg
 from .hamiltonian import build_hamiltonian
-from .quantum_solver import solve_quantum_hybrid
+from .kuramoto import consciousness_threshold, simulate_kuramoto
+from .quantum_solver import coupler_non_local, solve_quantum_hybrid
+from .replay import replay_offline
 from .topology import compute_p_sig
 from .tryperposition import cognitive_signal, solve_tryperposition
 from .validation import lz_match, microstate_isomorphism, psd_correlation
@@ -70,6 +72,12 @@ def run_pipeline(
     log(f"[TOPO] Duree de vie H1     = {topo_pre.h1_lifetime_ms:.1f} ms")
     log(f"[TOPO] Cavites H2 max      = {topo_pre.n_h2_cavities}")
 
+    # Horloge thalamique + seuil de conscience
+    sig_k, clock = simulate_kuramoto(duration_s=len(ref_eeg) / fs, fs=fs)
+    h1_cycles = np.array([d.size for d in topo_pre.barcodes])
+    consc = consciousness_threshold(topo_pre.p_sig_t, h1_cycles)
+    log(f"[KURAMOTO] coherence theta = {clock.coherence:.3f} | seuil conscience = {consc['threshold_reached']} ({consc['n_cycles']} cycles H1)")
+
     # ---------- PHASE 4 : tryperposition ----------
     log("\n=== PHASE 4 : TRYPERSITION & COLLAPSE DIRIGE ===")
     adj = (con.weights > 0).astype(np.int8)
@@ -79,6 +87,13 @@ def run_pipeline(
     log(f"[TRYP] Flux d'emergence   = {tres.emergence_flux:+.4f}")
     sig = cognitive_signal(tres, qres.energies, duration_s=5.0, fs=fs,
                            reference=ref_eeg)
+
+    # Couplage non-local (myeline/microtubules) : le Hamiltonien acquiert
+    # des canaux inter-regionaux sans decoherence
+    H_coupled = coupler_non_local(H, con.positions)
+    qres_coupled = solve_quantum_hybrid(H_coupled, k=6, p_sig=topo_pre.p_sig_peak)
+    log(f"[COUPLAGE] E0/site couple = {qres_coupled.e0_per_site:.5f} eV "
+        f"(vs {qres.e0_per_site:.5f} decouple)")
 
     # ---------- PHASE 5 : certification + artefacts ----------
     log("\n=== PHASE 5 : CERTIFICATION CRYPTOGRAPHIQUE ===")
@@ -99,6 +114,12 @@ def run_pipeline(
     log(f"[ZK] Commitment = {receipt['zk_commitment'][:18]}...")
     log(f"[ZK] Verification = {verif['status']} en {verif['verification_time_ms']} ms")
     log(f"[ZK] Invariants = {invariants}")
+
+    # ---------- REPLAY QUANTIQUE (consolidation offline) ----------
+    log("\n=== REPLAY QUANTIQUE (sommeil / consolidation) ===")
+    psi_wake = qres.states[:, 0].copy()
+    replay = replay_offline(psi_wake, qres.energies, adj, ref_eeg, fs, n_cycles=6)
+    log(f"[REPLAY] {replay['n_cycles']} cycles | P_sig moyen = {replay['mean_p_sig']:.3f} | flux = {replay['mean_flux']:+.3f}")
 
     # Artefacts
     np.save(out / "cognitive_state_vector.npy", psi_final.astype(np.complex64))
@@ -139,6 +160,9 @@ Connectome : {'fichier ' + str(connectome_path) if connectome_path else 'small-w
 | P_sig peak | {topo_pre.p_sig_peak:.3f} |
 | Duree de vie H1 | {topo_pre.h1_lifetime_ms:.1f} ms |
 | Suppression decoherence (produit canaux) | x{suppression_tot:.1f} |
+| Seuil conscience (cycles H1 persistants) | {consc['threshold_reached']} ({consc['n_cycles']} cycles) |
+| Couplage non-local (E0/site) | {qres_coupled.e0_per_site:.5f} eV (delta {abs(qres_coupled.e0_per_site - qres.e0_per_site):.6f} eV vs decouple) |
+| Replay quantique (P_sig moyen) | {replay['mean_p_sig']:.3f} |
 
 ## Correspondance biologique (objectif : copie ~98 % des signaux)
 | Metrique | Valeur |

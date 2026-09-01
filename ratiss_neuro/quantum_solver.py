@@ -121,6 +121,36 @@ def _coherence_fidelity(gamma_eff: dict, t_s: float,
     return float((1.0 + np.exp(-2.0 * g_tot * t_s / n_corr)) / 2.0)
 
 
+def coupler_non_local(H: sp.csr_matrix, positions: np.ndarray,
+                      n_links: int = 24, t_myelin: float = 0.5,
+                      seed: int = 3) -> sp.csr_matrix:
+    """Canaux de couplage quantique inter-regionaux : faisceaux myelinises
+    (fibres longues de substance blanche) = hopping longue portee fort
+    entre hubs distants. Transport d'amplitudes |psi_i|^2 inter-modules
+    sans decoherence thermique standard (lien ideal, t constant).
+
+    Ajoute n_links liens entre les hubs de plus haut degre les plus
+    eloignes geometriquement."""
+    Hd = H.tolil()
+    n = H.shape[0]
+    deg = np.asarray((H != 0).sum(axis=1)).ravel()
+    hubs = np.argsort(deg)[::-1][: max(4, n // 8)]
+    rng = np.random.default_rng(seed)
+    added = 0
+    for _ in range(n_links * 4):
+        if added >= n_links:
+            break
+        i, j = rng.choice(hubs, size=2, replace=False)
+        d = np.linalg.norm(positions[i] - positions[j])
+        if d < np.median(np.linalg.norm(positions - positions.mean(0), axis=1)):
+            continue  # on veut des liens LONGUE portee
+        if Hd[i, j] == 0:
+            Hd[i, j] = t_myelin
+            Hd[j, i] = t_myelin
+            added += 1
+    return Hd.tocsr()
+
+
 def time_evolution(H: sp.csr_matrix, psi0: np.ndarray, n_steps: int = 200,
                    dt_fs: float = 50.0) -> np.ndarray:
     """Trajectoire |psi(t)> par exponentiation de Krylov (snapshots)."""
