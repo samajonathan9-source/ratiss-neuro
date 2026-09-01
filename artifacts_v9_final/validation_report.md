@@ -28,7 +28,7 @@ Connectome : fichier data/human_connectome_360.csv
 | Correlation spectrale PSD | 0.9689 |
 | Match complexite Lempel-Ziv | 96.43 % |
 | Isomorphisme micro-etats (corr P_sig) | 0.4188 |
-| **SNN forward (dynamique causale)** | **ISO = 0.026** (960 neurones, 24 regions, 5.2 Hz) |
+| **SNN forward (dynamique causale)** | **ISO = 0.012** (240 neurones, 8 regions, 2.1 Hz) |
 
 ## Certification
 - Commitment : `0xd46c72d5107b5d7117f3fab6f4a9196845010c3a1243fade9707942fdde4dce7`
@@ -48,11 +48,13 @@ lissage). La PSD et LZ sont donc matchees par construction ; l'ISO
 (correlation des trajectoires P_sig) mesure la correspondance
 dynamique residuelle — la frontiere ouverte du jumeau.
 
-SNN AdEx quantique-couple (Phase 4b, RATISS-SNN-WHOLEBRAIN) : reseau
-forward causal de neurones AdEx (80/20 E/I, connectome structural,
-I_quantum = p_n du collapse, drive thalamique = phases < 16 Hz).
-Resultat honnete : l'ISO forward est ~0.03, tres inferieur au
-surrogate (0.42). La refractarite AdEx filtre la dynamique lente
-du drive : le SNN non-calibre ne reproduit pas encore les micro-etats.
-C'est la frontiere scientifique reelle — combler cet ecart exige le
-calibrage STDP/BPTT (Phase 3 de la roadmap), pas du tuning a la main.
+SNN AdEx quantique-couple + apprentissage ISO (Phase 3 roadmap) :
+reseau forward causal de neurones AdEx (80/20 E/I, connectome
+structural, I_quantum = p_n du collapse, drive thalamique = phases
+< 16 Hz), avec STDP triplet (Pfister-Gerstner), regle homologique
+topologique (Betti H1 guide la plasticite via topo_plasticity) et
+boucle meta-d'apprentissage sur (i_ext, depth) — iso_learning.py.
+Resultat honnete : l'ISO post-apprentissage = 0.012 ; la
+refractarite AdEx filtre la dynamique lente du drive, donc le
+surrogate statistique (ISO = 0.42) reste superieur. L'ecart
+est documente ici : c'est la frontiere scientifique reelle.

@@ -196,3 +196,42 @@ class TestSNN:
         eeg = snn_to_eeg(res, 160.0)
         assert eeg.size > 0 and np.all(np.isfinite(eeg))
 
+    def test_stdp_w_weights_bounded(self):
+        from ratiss_neuro.snn import (AdExParams, build_microcircuit,
+                                      simulate_snn)
+        W, is_exc = build_microcircuit(3, n_per_region=10, seed=4)
+        res = simulate_snn(W, is_exc, AdExParams(), duration_s=0.5,
+                           dt_ms=0.5, stdp_on=True, stdp_lr=0.005)
+        assert res.w_final is not None
+        assert (res.w_final[np.where(is_exc)[0]] >= 0).all()
+
+
+class TestTopoPlasticity:
+    """Regle homologique topologique : Betti H1 guide la plasticite."""
+
+    def test_h1_mask_shape(self):
+        from ratiss_neuro.topo_plasticity import h1_mask_from_spikes
+        s = (np.random.default_rng(1).random((25, 40)) < 0.25).astype(float)
+        m = h1_mask_from_spikes(s, n_sentinel=16, seed=0)
+        assert m.shape == (25, 25)
+
+    def test_h1_cycles_nonneg(self):
+        from ratiss_neuro.topo_plasticity import n_h1_cycles
+        s = (np.random.default_rng(2).random((25, 40)) < 0.25).astype(float)
+        assert n_h1_cycles(s, n_sentinel=16, seed=0) >= 0
+
+
+class TestISOLearning:
+    """Boucle d'apprentissage ISO : STDP + meta-ajustement."""
+
+    def test_learn_returns_bounded(self):
+        from ratiss_neuro.iso_learning import learn_iso
+        from ratiss_neuro.snn import AdExParams, build_microcircuit
+        ref = np.random.default_rng(3).standard_normal(800)
+        W, is_exc = build_microcircuit(2, n_per_region=10, seed=5)
+        i_q = np.linspace(-30, 30, 2)
+        res = learn_iso(W, is_exc, AdExParams(), ref, 160.0, i_q,
+                        n_epochs=2, duration_s=0.5)
+        assert -1.0 <= res.best_iso <= 1.0
+        assert res.w_final.shape == W.shape
+

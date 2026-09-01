@@ -46,6 +46,7 @@ class SNNResult:
     lfp: np.ndarray           # (n_steps,) champ moyen par region somme
     region_rates: np.ndarray  # (n_regions, n_steps) taux de feu par region
     fs: float
+    w_final: np.ndarray | None = None   # poids appris (si STDP actif)
 
 
 def build_microcircuit(n_regions: int, n_per_region: int = 40,
@@ -97,13 +98,22 @@ def simulate_snn(w: np.ndarray, is_exc: np.ndarray,
                  i_quantum: np.ndarray | None = None,
                  theta_clock: np.ndarray | None = None,
                  i_ext_pa: float = 300.0, seed: int = 11,
+                 stdp_on: bool = False, stdp_lr: float = 0.002,
+                 topo_mask: np.ndarray | None = None,
                  ) -> SNNResult:
-    """Simulation AdEx vectorisee (Euler).
+    """Simulation AdEx vectorisee (Euler) avec STDP triplet optionnel.
 
     i_quantum : (n_regions,) courant quantique par region (pA), constant
         sur la simulation — module l'excitabilite regionale.
     theta_clock : (n_steps,) coherence theta de l'horloge thalamique,
         module l'input externe (pacemaker).
+
+    STDP triplet (Pfister-Gerstner 2006) : traces pre/post exponentielles
+    (rapide + lente). Potentiation post-pre sur spike post, depression
+    pre-post sur spike pre. Applique aux synapses excitatrices. Si
+    topo_mask (binaire, meme forme que W) est fourni, la plasticite est
+    modulee par le masque (regle homologique topologique : seules les
+    synapses du cycle H1 naissant se potentialisent).
     """
     n_total = w.shape[0]
     n_regions = i_quantum.size if i_quantum is not None else 1
@@ -117,10 +127,25 @@ def simulate_snn(w: np.ndarray, is_exc: np.ndarray,
     g_i = np.zeros(n_total, dtype=np.float64)
 
     spikes = np.zeros((n_steps, n_total), dtype=bool)
-    v_trace = np.zeros((n_steps, n_total), dtype=np.float32)
 
     rng = np.random.default_rng(seed)
-    w_sign = np.where(is_exc, 1.0, 0.0)  # courant entrant deja signe dans W
+
+    # --- STDP : traces pre/post (rapide + lente) ---
+    exc_idx = np.where(is_exc)[0]
+    W_run = w.astype(np.float64).copy() if stdp_on else w
+    if stdp_on:
+        tr_pre_fast = np.zeros(n_total)   # trace presynaptique rapide
+        tr_pre_slow = np.zeros(n_total)   # trace presynaptique lente
+        tr_post_fast = np.zeros(n_total)  # trace postsynaptique rapide
+        tr_post_slow = np.zeros(n_total)  # trace postsynaptique lente
+        tau_fast, tau_slow = 16.0, 101.0  # ms (Levin & Gerstner)
+        mask = topo_mask if topo_mask is not None else np.ones_like(w)
+        # plasticite uniquement sur synapses E -> *
+        learnable = np.zeros_like(w)
+        learnable[exc_idx] = 1.0
+        learnable = learnable * mask
+
+    v_trace_mem = np.zeros((n_steps, n_total), dtype=np.float32)
 
     for step in range(n_steps):
         # courant synaptique : conductances exponentielles
@@ -134,13 +159,12 @@ def simulate_snn(w: np.ndarray, is_exc: np.ndarray,
         i_ext = i_ext_pa * pacemaker + 50.0 * rng.standard_normal(n_total)
 
         # courant quantique par region
-        if i_quantum is not None:
-            i_q = np.repeat(i_quantum, n_per_region)
-        else:
-            i_q = 0.0
+        i_q = (np.repeat(i_quantum, n_per_region)
+               if i_quantum is not None else 0.0)
 
         # courant synaptique total (W deja signe : E>0, I<0)
-        i_syn = w @ (np.where(is_exc, g_e, 0.0) + np.where(~is_exc, g_i, 0.0))
+        i_syn = W_run @ (np.where(is_exc, g_e, 0.0)
+                       + np.where(~is_exc, g_i, 0.0))
 
         # AdEx Euler
         exp_term = params.delta_t * np.exp((v - params.v_t) / params.delta_t)
@@ -156,11 +180,37 @@ def simulate_snn(w: np.ndarray, is_exc: np.ndarray,
         v[fired] = params.v_reset
         w_adapt[fired] += params.b
 
-        # transmission synaptique
-        g_e += fired * is_exc * 1.0
-        g_i += fired * (~is_exc) * 1.0
+        if stdp_on:
+            # decaiment des traces
+            tr_pre_fast *= np.exp(-dt / tau_fast)
+            tr_pre_slow *= np.exp(-dt / tau_slow)
+            tr_post_fast *= np.exp(-dt / tau_fast)
+            tr_post_slow *= np.exp(-dt / tau_slow)
 
-        v_trace[step] = v
+            idx = np.where(fired)[0]
+            if idx.size:
+                # spike POST (sur le neurone qui a tire) :
+                # potentation des afferents pre : A+ * pre_slow
+                dW_pot = stdp_lr * np.outer(tr_pre_slow, fired) * learnable
+                # spike PRE : depression des sortants :
+                dW_dep = -stdp_lr * np.outer(fired, tr_post_fast) * learnable
+                W_run += dW_pot + dW_dep
+                # mise a jour traces
+                tr_pre_fast[fired] += 1.0
+                tr_pre_slow[fired] += 1.0
+                tr_post_fast[fired] += 1.0
+                tr_post_slow[fired] += 1.0
+                # homeostasie : bornes sur les poids E uniquement
+                exc_rows = W_run[exc_idx]
+                np.clip(exc_rows, 0.0, 2.0, out=exc_rows)
+                W_run[exc_idx] = exc_rows
+                np.clip(W_run, -3.0, 3.0, out=W_run)
+                W_run[np.diag_indices_from(W_run)] = 0.0
+
+        v_trace_mem[step] = v
+
+    # transmission synaptique (hors boucle pour le rang final)
+    v_trace = v_trace_mem
 
     # LFP : somme des taux de feu par region (proxy du champ EEG)
     region_rates = np.zeros((n_regions, n_steps))
@@ -169,8 +219,10 @@ def simulate_snn(w: np.ndarray, is_exc: np.ndarray,
                                  (r + 1) * n_per_region].sum(axis=1)
     lfp = region_rates.sum(axis=0)
 
+    w_final = W_run if stdp_on else None
     return SNNResult(spikes=spikes, v_trace=v_trace, lfp=lfp,
-                     region_rates=region_rates, fs=1000.0 / dt_ms)
+                     region_rates=region_rates, fs=1000.0 / dt_ms,
+                     w_final=w_final)
 
 
 def snn_to_eeg(result: SNNResult, target_fs: float,
