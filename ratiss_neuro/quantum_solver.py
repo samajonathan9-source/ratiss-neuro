@@ -38,7 +38,9 @@ def solve_quantum_hybrid(
     seed: int = 13,
 ) -> QuantumResult:
     k = min(k, H.shape[0] - 2)
-    energies, states = spla.eigsh(H, k=k, which="SA", tol=1e-10)
+    # v0 deterministe : le receipt hash-chain exige la reproductibilite
+    v0 = np.linspace(1.0, 2.0, H.shape[0])
+    energies, states = spla.eigsh(H, k=k, which="SA", tol=1e-10, v0=v0)
     order = np.argsort(energies)
     energies, states = energies[order], states[:, order]
 

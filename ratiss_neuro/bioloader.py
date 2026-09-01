@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import os
+
 import numpy as np
 
 
@@ -83,7 +85,16 @@ def load_reference_eeg(path: str | None = None, duration_s: float = 5.0, fs: flo
             sig = f.readSignal(channel).astype(np.float64)
             f.close()
             return sig, fs_e
+        if path.endswith(".npz"):
+            data = np.load(path)
+            return (data["signal"].astype(np.float64),
+                    float(data["fs"]))
         if path.endswith(".npy"):
+            # un .npy nu n'a pas de frequence d'echantillonnage : on lit
+            # le compagnon <fichier>.fs.txt s'il existe
+            fs_file = path[:-4] + ".fs.txt"
+            if os.path.exists(fs_file):
+                fs = float(open(fs_file).read().strip())
             return np.load(path).astype(np.float64), fs
         data = np.loadtxt(path, delimiter=",", ndmin=2)
         return data[:, 0], fs

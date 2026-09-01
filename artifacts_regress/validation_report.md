@@ -1,37 +1,37 @@
 # Validation Report — RATISS-NEURO Jumeau Numerique Cognitif
 
-Reference biologique : fichier data/eeg_high_density.npy
-Connectome : fichier data/human_connectome_360.csv
+Reference biologique : fichier data/eeg_real_S001R01.edf
+Connectome : fichier data/celegans_white1986.csv
 
 ## Metriques quantiques
 | Observable | Valeur |
 |---|---|
-| E0 / site | -0.017762 eV |
-| Gap de spin | 1350.229 meV |
-| Ordre d-wave | 0.1964 |
-| Entropie vN (normalisee) | 0.0052 |
+| E0 / site | -0.235807 eV |
+| Gap de spin | 28148.069 meV |
+| Ordre d-wave | 0.2105 |
+| Entropie vN (normalisee) | 0.0058 |
 | Fidelite de coherence | 99.84 % |
 
 ## Metriques topologiques
 | Observable | Valeur |
 |---|---|
 | P_sig peak | 0.567 |
-| Duree de vie H1 | 52652021107.9 ms |
+| Duree de vie H1 | 15.0 ms |
 | Suppression decoherence (produit canaux) | x2733213.1 |
-| Seuil conscience (cycles H1 persistants) | True (2431 cycles) |
-| Couplage non-local (E0/site) | -0.01774 eV (delta 0.000022 eV vs decouple) |
-| Replay quantique (P_sig moyen) | 0.544 |
+| Seuil conscience (cycles H1 persistants) | True (1211 cycles) |
+| Couplage non-local (E0/site) | -0.23581 eV (delta 0.000005 eV vs decouple) |
+| Replay quantique (P_sig moyen) | 0.543 |
 
 ## Correspondance biologique (objectif : copie ~98 % des signaux)
 | Metrique | Valeur |
 |---|---|
-| Correlation spectrale PSD | 0.9689 |
+| Correlation spectrale PSD | 0.7833 |
 | Match complexite Lempel-Ziv | 96.43 % |
-| Isomorphisme micro-etats (corr P_sig) | 0.4188 |
+| Isomorphisme micro-etats (corr P_sig) | 0.1237 |
 
 ## Certification
-- Commitment : `0xd46c72d5107b5d7117f3fab6f4a9196845010c3a1243fade9707942fdde4dce7`
-- Statut : VERIFIED (0.008 ms)
+- Commitment : `0xaa2c1437d9f60425e889893a2837e291609b283a4f72d5dc31072c2ecbc6ad36`
+- Statut : VERIFIED (0.007 ms)
 - Invariants : {"binding_energy_negative": true, "entropy_non_negative": true, "lattice_bounds_valid": true, "state_commitment_valid": true}
 
 Note d'honnetete : le receipt est un engagement par chaine de hachage

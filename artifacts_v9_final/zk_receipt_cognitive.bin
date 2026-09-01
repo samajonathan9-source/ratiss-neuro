@@ -1,12 +1,12 @@
 {
   "scheme": "hash-commitment BLAKE3->SHA256 (ZK-STARK interface placeholder)",
-  "zk_commitment": "0xfe44f23d5674c2fa453038f68387c97ef5e518887245a728ef5f1efc1c253db8",
-  "receipt_b64": "eyJjIjogImZlNDRmMjNkNTY3NGMyZmE0NTMwMzhmNjgzODdjOTdlZjVlNTE4ODg3MjQ1YTcyOGVmNWYxZWZjMWMyNTNkYjgiLCAicCI6IHsiZGVjb2hlcmVuY2Vfc3VwcHJlc3Npb25fZmFjdG9yIjogNTIzMjU2LjA5LCAiZmluYWxfZmlkZWxpdHkiOiAwLjk5NzI3OCwgInBfc2lnX3BlYWsiOiAwLjQyOTJ9fQ==",
+  "zk_commitment": "0xd46c72d5107b5d7117f3fab6f4a9196845010c3a1243fade9707942fdde4dce7",
+  "receipt_b64": "eyJjIjogImQ0NmM3MmQ1MTA3YjVkNzExN2YzZmFiNmY0YTkxOTY4NDUwMTBjM2ExMjQzZmFkZTk3MDc5NDJmZGRlNGRjZTciLCAicCI6IHsiZGVjb2hlcmVuY2Vfc3VwcHJlc3Npb25fZmFjdG9yIjogMjczMzIxMy4wNiwgImZpbmFsX2ZpZGVsaXR5IjogMC45OTg0MjgsICJwX3NpZ19wZWFrIjogMC41Njd9fQ==",
   "public_inputs": {
-    "final_fidelity": 0.997278,
-    "p_sig_peak": 0.4292,
-    "decoherence_suppression_factor": 523256.09
+    "final_fidelity": 0.998428,
+    "p_sig_peak": 0.567,
+    "decoherence_suppression_factor": 2733213.06
   },
-  "timestamp_utc": "2026-09-01T00:41:51Z",
+  "timestamp_utc": "2026-09-01T01:13:55Z",
   "status": "COMMITTED"
 }

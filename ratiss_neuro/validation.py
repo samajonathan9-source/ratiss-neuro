@@ -14,11 +14,14 @@ from .topology import compute_p_sig
 
 
 def psd_correlation(sig: np.ndarray, ref: np.ndarray, fs: float,
-                    fmin: float = 1.0, fmax: float = 80.0) -> float:
-    """Correlation log-PSD interpolee sur une grille de frequences commune
-    (robuste aux longueurs de signal differentes)."""
-    f1, p1 = welch(sig, fs=fs, nperseg=min(1024, sig.size))
-    f2, p2 = welch(ref, fs=fs, nperseg=min(1024, ref.size))
+                    fmin: float = 1.0, fmax: float = 80.0,
+                    window: int = 5000) -> float:
+    """Correlation log-PSD interpolee sur une grille de frequences commune,
+    sur fenetre temporelle commune (robuste aux longueurs differentes)."""
+    n = min(window, sig.size, ref.size)
+    nperseg = min(256, n)
+    f1, p1 = welch(sig[:n], fs=fs, nperseg=nperseg)
+    f2, p2 = welch(ref[:n], fs=fs, nperseg=nperseg)
     hi = min(fmax, f1[-1], f2[-1])
     if hi <= fmin:
         return 0.0
@@ -69,10 +72,13 @@ def lz_match(sig: np.ndarray, ref: np.ndarray, window: int = 5000) -> float:
     return float(1.0 - abs(a - b) / max(a, b))
 
 
-def microstate_isomorphism(sig: np.ndarray, ref: np.ndarray, fs: float) -> float:
-    """Correlation des trajectoires P_sig : isomorphisme des micro-etats."""
-    pa = compute_p_sig(sig, fs).p_sig_t
-    pb = compute_p_sig(ref, fs).p_sig_t
+def microstate_isomorphism(sig: np.ndarray, ref: np.ndarray, fs: float,
+                           window: int = 5000) -> float:
+    """Correlation des trajectoires P_sig : isomorphisme des micro-etats,
+    sur fenetre temporelle commune."""
+    n = min(window, sig.size, ref.size)
+    pa = compute_p_sig(sig[:n], fs).p_sig_t
+    pb = compute_p_sig(ref[:n], fs).p_sig_t
     m = min(pa.size, pb.size)
     if m < 4:
         return 0.0

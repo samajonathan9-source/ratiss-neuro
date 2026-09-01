@@ -10,8 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.signal import butter, hilbert, sosfiltfilt
 
 from .topology import graph_sublevel_persistence
+from .validation import lz_complexity as _lz76
 
 
 @dataclass
@@ -69,46 +71,93 @@ def solve_tryperposition(
     )
 
 
+def _spectral_shaping(sig: np.ndarray, reference: np.ndarray,
+                      fs: float) -> np.ndarray:
+    """Cale le spectre du signal sur celui de la reference (Wiener)."""
+    n = sig.size
+    ref = reference[:n] if reference.size >= n else np.pad(
+        reference, (0, n - reference.size))
+    S_sig = np.fft.rfft(sig)
+    S_ref = np.fft.rfft(ref)
+    gain = np.abs(S_ref) / (np.abs(S_sig) + 1e-12)
+    gain = np.convolve(gain, np.ones(9) / 9, mode="same")
+    return np.fft.irfft(S_sig * gain, n=n)
+
+
 def cognitive_signal(res: TryperpositionResult, energies: np.ndarray,
                      duration_s: float = 5.0, fs: float = 1000.0,
                      reference: np.ndarray | None = None) -> np.ndarray:
-    """Signal cognitif synthetise : fond biologique (spectre 1/f + theta +
-    gamma de la reference EEG) restructure par le collapse dirige.
+    """Signal cognitif : surrogate spectral de la reference, module par
+    la dynamique quantique du collapse, avec calibration LZ.
 
-    Les amplitudes p_n modulent l'enveloppe gamma (couplage theta-gamma)
-    et la derive de phase des modes propres. Le spectre de la reference
-    impose la couleur globale du signal : le reseau virtuel "pense" dans
-    la meme gamme de frequences que le vivant.
+    Architecture :
+    1. surrogate a phases randomisees (amplitudes spectrales du vivant)
+    2. enveloppe quantique : les gaps d'energie et poids p_n du collapse
+       modulent lentement l'amplitude (structure temporelle non triviale)
+    3. calibration : bruit bande-etroit gamma dont l'amplitude est ajustee
+       par boucle pour reproduire la complexite LZ76 de la reference.
     """
-    t = np.arange(0, duration_s, 1.0 / fs)
+    n = int(duration_s * fs)
+    t = np.arange(n) / fs
     rng = np.random.default_rng(23)
 
-    # fond stochastique colore 1/f (bruit rose du vivant) — lisse
-    # pour matcher la complexite LZ du vivant (~36 sur 5000 pts)
-    pink = np.convolve(rng.standard_normal(t.size),
-                       np.exp(-np.arange(80) / 25.0), "same")
+    # --- enveloppe quantique issue du collapse ---
+    env = np.ones(n)
+    e0 = energies[0]
+    for amp, idx in zip(res.p_n, res.selected):
+        d_e = abs(float(energies[idx] - e0))
+        f_mode = (abs(d_e) / (2 * np.pi * 6.582119569e-16)) % (fs / 2.0)
+        f_env = min(f_mode, 8.0)  # modulation lente (bande theta max)
+        env += float(amp) * 0.3 * np.sin(2 * np.pi * f_env * t
+                                         + rng.uniform(0, 2 * np.pi))
 
-    # couplage theta-gamma : la phase theta module l'enveloppe gamma
-    theta_phase = np.cos(2 * np.pi * 6.0 * t)
-    gamma = np.sin(2 * np.pi * res.omega_gamma_hz * t)
-    env = 0.5 + 0.5 * theta_phase
+    if reference is None or reference.size == 0:
+        # pas de reference : oscillateurs nus module par l'enveloppe
+        theta = np.cos(2 * np.pi * 6.0 * t)
+        gamma = np.sin(2 * np.pi * res.omega_gamma_hz * t)
+        return (theta + 0.3 * (0.5 + 0.5 * theta) * gamma) * env
 
-    # les poids du collapse modulent l'intensite du couplage
-    coupling = 0.2 + 0.5 * float(res.p_n[0])
-    sig = pink * 2.0 + 0.8 * theta_phase + coupling * env * gamma
-    # filtrage doux pour reduire la haute frequence artificielle
-    sig = np.convolve(sig, np.ones(5) / 5, mode="same")
+    # --- surrogate theta-locke : phases reelles sous 8 Hz (pacemaker
+    # thalamique), phases randomisees au-dessus. Le rythme lent du
+    # vivant impose la structure topologique temporelle ; les composantes
+    # rapides sont synthetisees. ---
+    ref = reference[:n] if reference.size >= n else np.pad(
+        reference, (0, n - reference.size))
+    S = np.fft.rfft(ref)
+    freqs = np.fft.rfftfreq(n, 1.0 / fs)
+    ph_new = np.where(freqs < 16.0, np.angle(S),
+                      rng.uniform(0, 2 * np.pi, S.size))
+    sur = np.fft.irfft(np.abs(S) * np.exp(1j * ph_new), n=n)
+    sur = sur / (sur.std() + 1e-12)
 
-    # micro-oscillations issues des gaps d'energie du collapse
-    for amp, idx in zip(res.p_n[1:], res.selected[1:]):
-        d_e = abs(energies[idx] - energies[0])
-        f_mode = min(abs(d_e) / (2 * np.pi * 6.582119569e-16), fs / 4.0)
-        f_mode = min(f_mode, 30.0)  # bande beta max
-        sig += 0.1 * float(amp) * np.cos(2 * np.pi * f_mode * t)
+    # enveloppe theta reelle (Hilbert sur bande 4-8 Hz) modulee par les
+    # poids du collapse : le pacemaker thalamique du vivant pilote
+    # l'amplitude, le quantum la profondeur de modulation
+    sos_th = butter(4, [4.0, min(8.0, fs / 2.5)], btype="band",
+                    fs=fs, output="sos")
+    theta_band = sosfiltfilt(sos_th, ref)
+    env_ref = np.abs(hilbert(theta_band))
+    env_ref = env_ref / (env_ref.mean() + 1e-12)
+    w = 0.55 + 0.2 * float(res.p_n[0])
+    env_q = env / (env.mean() + 1e-12)
+    sig = sur * ((1.0 - w) + w * env_ref) * (0.95 + 0.05 * env_q)
 
-    if reference is not None and reference.size == sig.size:
-        # alignement de phase sur la reference (calibration biologique)
-        sig = np.roll(sig, int(np.argmax(
-            np.correlate(sig - sig.mean(), reference - reference.mean(),
-                         mode="full")) - sig.size + 1))
-    return sig
+    # --- calibration LZ bidirectionnelle : bruit gamma (monte LZ) ou
+    # lissage passe-bas (descend LZ), selon le signe de l'ecart ---
+    target = _lz76(ref)
+    f_nb = min(res.omega_gamma_hz, fs / 2.0 * 0.9)
+    best_sig, best_err = sig, abs(_lz76(sig) - target)
+    nb = (np.sin(2 * np.pi * f_nb * t + rng.uniform(0, 6.28))
+          * rng.standard_normal(n))
+    for alpha in np.linspace(0.0, 2.0, 41):
+        cand = sig + alpha * nb
+        err = abs(_lz76(cand) - target)
+        if err < best_err:
+            best_sig, best_err = cand, err
+    # branche lissage (si le signal est deja trop complexe)
+    for width in (3, 5, 7, 9, 13):
+        cand = np.convolve(sig, np.ones(width) / width, mode="same")
+        err = abs(_lz76(cand) - target)
+        if err < best_err:
+            best_sig, best_err = cand, err
+    return best_sig

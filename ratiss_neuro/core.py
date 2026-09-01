@@ -180,6 +180,14 @@ Note d'honnetete : le receipt est un engagement par chaine de hachage
 BLAKE3->SHA256 (bind + timestamp). H_cog est resolu en deux regimes :
 solveur hybride (secteur 1 particule, scalable a N=1024) et solveur
 Fock complet (2^n dim, bench d'exactitude, fock_solver.py).
+
+Methode du signal cognitif : surrogate "theta-locke" de la reference
+(amplitudes spectrales reelles, phases reelles < 16 Hz = pacemaker
+thalamo-cortical, phases randomisees au-dessus), module par les poids
+p_n du collapse, avec calibration LZ bidirectionnelle (bruit gamma /
+lissage). La PSD et LZ sont donc matchees par construction ; l'ISO
+(correlation des trajectoires P_sig) mesure la correspondance
+dynamique residuelle — la frontiere ouverte du jumeau.
 """
     (out / "validation_report.md").write_text(report)
 

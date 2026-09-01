@@ -1,0 +1,12 @@
+{
+  "scheme": "hash-commitment BLAKE3->SHA256 (ZK-STARK interface placeholder)",
+  "zk_commitment": "0xaa2c1437d9f60425e889893a2837e291609b283a4f72d5dc31072c2ecbc6ad36",
+  "receipt_b64": "eyJjIjogImFhMmMxNDM3ZDlmNjA0MjVlODg5ODkzYTI4MzdlMjkxNjA5YjI4M2E0ZjcyZDVkYzMxMDcyYzJlY2JjNmFkMzYiLCAicCI6IHsiZGVjb2hlcmVuY2Vfc3VwcHJlc3Npb25fZmFjdG9yIjogMjczMzIxMy4wNiwgImZpbmFsX2ZpZGVsaXR5IjogMC45OTg0MjgsICJwX3NpZ19wZWFrIjogMC41Njd9fQ==",
+  "public_inputs": {
+    "final_fidelity": 0.998428,
+    "p_sig_peak": 0.567,
+    "decoherence_suppression_factor": 2733213.06
+  },
+  "timestamp_utc": "2026-09-01T01:14:33Z",
+  "status": "COMMITTED"
+}
